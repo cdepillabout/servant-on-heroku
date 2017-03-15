@@ -91,13 +91,10 @@ instance MonadBaseControl IO MyApiM where
   restoreM eitherA = MyApiM . ReaderT . const . ExceptT $ pure eitherA
 
 -- | Run a Persistent query.
-runDb :: ( MonadIO m
-         , MonadReader Config m
-         , MonadBaseControl IO m
-         )
-      => ReaderT SqlBackend m a
-      -> m a
-runDb query = reader configPool >>= runSqlPool query
+runDb :: ReaderT SqlBackend MyApiM a -> MyApiM a
+runDb query =
+  let pool = reader configPool
+  in runSqlPool query pool
 
 app :: Config -> Application
 app config = serve (Proxy :: Proxy API) apiServer
