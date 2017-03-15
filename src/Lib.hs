@@ -19,7 +19,7 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Control
        (MonadBaseControl(StM, liftBaseWith, restoreM))
 import Control.Natural ((:~>)(NT))
-import Database.Persist (insert_)
+import Database.Persist (Entity(entityVal), insert_, selectList)
 import Database.Persist.Postgresql
        (ConnectionString, createPostgresqlPool)
 import Database.Persist.Sql
@@ -61,7 +61,7 @@ createConfigFromEnvVars = do
   pure Config {configPool = pool, configPort = port}
 
 type API = "add-comment" :> ReqBody '[JSON] Comment :> Post '[JSON] Comment
-      :<|> "get-comments" :> Get '[JSON] [String]
+      :<|> "get-comments" :> Get '[JSON] [Comment]
 
 newtype MyApiM a = MyApiM
   { unMyApiM :: ReaderT Config (ExceptT ServantErr IO) a
@@ -117,10 +117,13 @@ serverRoot = addComment :<|> getComments
 addComment :: Comment -> MyApiM Comment
 addComment comment = do
   runDb $ insert_ comment
-  return comment
+  pure comment
 
-getComments :: MyApiM [String]
-getComments = return ["hello"]
+getComments :: MyApiM [Comment]
+getComments = do
+  commentEntities <- runDb $ selectList [] []
+  let comments = fmap entityVal commentEntities
+  pure comments
 
 defaultMain :: IO ()
 defaultMain = do

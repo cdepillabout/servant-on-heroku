@@ -41,3 +41,7 @@ make: *** [Makefile:31: run] Error 1
 here is some curl:
 
 curl --verbose --request POST --header 'Content-Type: application/json' --data '{"author": "DG", "text": "Pretty good"}' 'http://localhost:8080/add-comment' | jq '.'
+
+more curl:
+
+curl --verbose --request GET --header 'Content-Type: application/json' 'http://localhost:8080/get-comments' | jq '.'
