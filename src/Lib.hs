@@ -19,6 +19,7 @@ import Control.Monad.Reader
 import Control.Monad.Trans.Control
        (MonadBaseControl(StM, liftBaseWith, restoreM))
 import Control.Natural ((:~>)(NT))
+import Data.Text (Text)
 import Database.Persist (Entity(entityVal), insert_, selectList)
 import Database.Persist.Postgresql
        (ConnectionString, createPostgresqlPool)
@@ -60,7 +61,8 @@ createConfigFromEnvVars = do
   pool <- makePoolFromUrl dbConnNum dbConnectionString
   pure Config {configPool = pool, configPort = port}
 
-type API = "add-comment" :> ReqBody '[JSON] Comment :> Post '[JSON] Comment
+type API = "hello-world" :> Get '[JSON] Text
+      :<|> "add-comment" :> ReqBody '[JSON] Comment :> Post '[JSON] Comment
       :<|> "get-comments" :> Get '[JSON] [Comment]
 
 newtype MyApiM a = MyApiM
@@ -92,9 +94,9 @@ instance MonadBaseControl IO MyApiM where
 
 -- | Run a Persistent query.
 runDb :: ReaderT SqlBackend MyApiM a -> MyApiM a
-runDb query =
-  let pool = reader configPool
-  in runSqlPool query pool
+runDb query = do
+  pool <- reader configPool
+  runSqlPool query pool
 
 app :: Config -> Application
 app config = serve (Proxy :: Proxy API) apiServer
@@ -109,15 +111,18 @@ app config = serve (Proxy :: Proxy API) apiServer
     transformation = Handler . flip runReaderT config . unMyApiM
 
 serverRoot :: ServerT API MyApiM
-serverRoot = addComment :<|> getComments
+serverRoot = helloWorldHandler :<|> addCommentHandler :<|> getCommentsHandler
 
-addComment :: Comment -> MyApiM Comment
-addComment comment = do
+helloWorldHandler :: MyApiM Text
+helloWorldHandler = pure "hello world"
+
+addCommentHandler :: Comment -> MyApiM Comment
+addCommentHandler comment = do
   runDb $ insert_ comment
   pure comment
 
-getComments :: MyApiM [Comment]
-getComments = do
+getCommentsHandler :: MyApiM [Comment]
+getCommentsHandler = do
   commentEntities <- runDb $ selectList [] []
   let comments = fmap entityVal commentEntities
   pure comments
