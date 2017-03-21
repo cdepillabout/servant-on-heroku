@@ -1,0 +1,11 @@
+# Files to not send to docker in the COPY or ADD commands.
+
+# docker files
+Dockerfile
+.dockerignore
+
+# git commits
+.git/
+
+# stack build directory
+.stack-work/
