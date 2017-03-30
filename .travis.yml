@@ -13,8 +13,10 @@ cache:
 
 addons:
   apt:
-    packages: []
-    sources: []
+    packages:
+      - libgmp-dev
+    sources:
+      - hvr-ghc
 
 before_install:
 # Using compiler above sets CC to an invalid value, so unset it
