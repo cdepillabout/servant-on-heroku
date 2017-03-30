@@ -14,6 +14,10 @@ import Database.Persist.TH
        (mkMigrate, mkPersist, mpsGenerateLenses, persistLowerCase, share,
         sqlSettings)
 
+-- This Template Haskell just generates a 'Comment' datatype and some helper
+-- functions for working with it.  For more information, check out Persistent's
+-- <http://www.yesodweb.com/book/persistent documentation>.
+
 share
   [mkPersist sqlSettings {mpsGenerateLenses = False}, mkMigrate "migrateAll"]
     [persistLowerCase|

@@ -37,20 +37,32 @@ import System.ReadEnvVar (lookupEnvDef, readEnvVarDef)
 
 import Models (Comment, migrateAll)
 
+-------------------
+-- Configuration --
+-------------------
+
+-- | This 'Config' object is used to store environment about our application.
+-- It is created on startup and passed to all the handlers.
 data Config = Config
-  { configPool :: !ConnectionPool
-  , configPort :: !Port
+  { configPool :: !ConnectionPool  -- ^ A pool of database connections.
+  , configPort :: !Port            -- ^ 'Port' to listen on.
   }
 
+-- | Number of simultaneous database connections to use in the
+-- 'ConnectionPool'.
 type DbPoolConnNum = Int
 
+-- | Create a 'ConnectionPool' for database connections based on a
+-- 'ConnectionString'.
 makePoolFromUrl
-  :: DbPoolConnNum
+  :: DbPoolConnNum      -- ^ Number of database connections to use.
   -> ConnectionString
   -> IO ConnectionPool
 makePoolFromUrl dbConnNum connectionString =
   runStdoutLoggingT $ createPostgresqlPool connectionString dbConnNum
 
+-- | Create a 'Config' based on environment variables, using defaults if the
+-- environment variables don't exist.
 createConfigFromEnvVars :: IO Config
 createConfigFromEnvVars = do
   port <- readEnvVarDef "PORT" 8080
@@ -62,10 +74,15 @@ createConfigFromEnvVars = do
   pool <- makePoolFromUrl dbConnNum dbConnectionString
   pure Config {configPool = pool, configPort = port}
 
-type API = "hello-world" :> Get '[JSON] Text
-      :<|> "add-comment" :> ReqBody '[JSON] Comment :> Post '[JSON] Comment
-      :<|> "get-comments" :> Get '[JSON] [Comment]
+------------------------------------
+-- App-specific Monad and Actions --
+------------------------------------
 
+-- | This 'MyApiM' monad is the monad that will be used for running the web
+-- application handlers.  This includes 'helloWorldHandler',
+-- 'addCommentHandler', and 'getCommentsHandler'.
+--
+-- It is just a newtype around @'ReaderT' 'Config' ('ExceptT' 'ServantErr' 'IO')@.
 newtype MyApiM a = MyApiM
   { unMyApiM :: ReaderT Config (ExceptT ServantErr IO) a
   } deriving ( Functor
@@ -77,6 +94,9 @@ newtype MyApiM a = MyApiM
              , MonadReader Config
              )
 
+-- | The 'MonadBaseControl' instance for 'MyApiM' is required for using
+-- 'runSqlPool' in 'runDb'.  It is somewhat complicated and can safely be
+-- ignored if you've never seen it before.
 instance MonadBaseControl IO MyApiM where
   type StM MyApiM a = Either ServantErr a
 
@@ -99,6 +119,18 @@ runDb query = do
   pool <- reader configPool
   runSqlPool query pool
 
+---------------------
+-- Web Application --
+---------------------
+
+-- | This 'API' type represents the three different routes for our web
+-- application.
+type API = "hello-world" :> Get '[JSON] Text
+      :<|> "add-comment" :> ReqBody '[JSON] Comment :> Post '[JSON] Comment
+      :<|> "get-comments" :> Get '[JSON] [Comment]
+
+
+-- | Create a WAI 'Application' capable of running with Warp.
 app :: Config -> Application
 app config = serve (Proxy :: Proxy API) apiServer
   where
@@ -108,25 +140,38 @@ app config = serve (Proxy :: Proxy API) apiServer
     naturalTrans :: MyApiM :~> Handler
     naturalTrans = NT transformation
 
+    -- This represents a natural transformation from 'MyApiM' to 'Handler'.
+    -- This consists of unwrapping the 'MyApiM', running the
+    -- @'ReaderT' 'Config'@, and wrapping the resulting value back up in a
+    -- 'Handler'.
     transformation :: forall a . MyApiM a -> Handler a
     transformation = Handler . flip runReaderT config . unMyApiM
 
+-- | Root of the web appliation.  This combines 'helloWorldHandler',
+-- 'addCommentHandler', and 'getCommentsHandler'.
 serverRoot :: ServerT API MyApiM
 serverRoot = helloWorldHandler :<|> addCommentHandler :<|> getCommentsHandler
 
+-- | Hello world handler.  Just returns the text @\"hello world\"@.
 helloWorldHandler :: MyApiM Text
 helloWorldHandler = pure "hello world"
 
+-- | Adds a 'Comment' to the database.  Returns the 'Comment' that was added.
 addCommentHandler :: Comment -> MyApiM Comment
 addCommentHandler comment = do
   runDb $ insert_ comment
   pure comment
 
+-- | Returns all the 'Comment's from the database.
 getCommentsHandler :: MyApiM [Comment]
 getCommentsHandler = do
   commentEntities <- runDb $ selectList [] []
   let comments = fmap entityVal commentEntities
   pure comments
+
+----------
+-- Main --
+----------
 
 defaultMain :: IO ()
 defaultMain = do
